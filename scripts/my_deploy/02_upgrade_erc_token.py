@@ -11,7 +11,10 @@ def main():
     proxy = TransparentUpgradeableProxy[-1]
     proxy_admin = ProxyAdmin[-1]
 
-    upgrade(account, proxy, my_token_v2, proxy_admin_contract=proxy_admin)
+    # Upgrade method calls upgrade method from proxy admin like following
+    # proxy_admin.upgrade(proxy.address, my_token_v2.address, {"from": account})
+    upgrade(account, proxy, my_token_v2, proxy_admin_contract=proxy_admin) # this upgrade method is imported from helpful scripts
+
     print("Proxy has been upgraded!")
 
     proxy_new_contract = Contract.from_abi("TokenV2", proxy.address, my_token_v2.abi)
