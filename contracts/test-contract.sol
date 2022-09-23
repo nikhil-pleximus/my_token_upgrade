@@ -5,7 +5,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 contract MyFun {
     uint priceFeed_decimals = 8;
 	uint otherToken_decimals = 6;
-    AggregatorV3Interface internal  priceFeed = AggregatorV3Interface(0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e);
+    AggregatorV3Interface public  priceFeed = AggregatorV3Interface(0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e);
 
     
 
@@ -40,7 +40,8 @@ contract MyFun {
 	// Function fetched latest price data from provided price feed
 	// the price is in (10^8) so we must divide it.
 	function getLatestPrice() internal view returns (uint) {
-		(,int price,,,) = priceFeed.latestRoundData();
+		// (,int price,,,) = priceFeed.latestRoundData();
+		uint8 price = priceFeed.decimals();
 		return uint(price);
 	}
 
@@ -54,6 +55,11 @@ contract MyFun {
 	function prec_divide(uint a, uint b, uint precision) internal pure returns ( uint) {
      	return a*(10**precision)/b;
  	}
+
+	function pricefeedD() public view returns (uint8) {
+		uint8 dec =  priceFeed.decimals();
+		return dec;
+	}
 }
 // priceFeed_decimals = 8
 // my_fun = MyFun.deploy({"from": accounts[0]})
