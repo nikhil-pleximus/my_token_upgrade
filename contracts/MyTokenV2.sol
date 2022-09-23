@@ -16,6 +16,7 @@ contract MyTokenV2 is ERC777Upgradeable {
 	// Chainlink pricefeed
 	AggregatorV3Interface internal priceFeed;
 	IERC20 internal otherToken;
+	uint8 private _decimals;
 
     address[] private this_array = [address(this)]; //! passed as array
 
@@ -32,7 +33,17 @@ contract MyTokenV2 is ERC777Upgradeable {
 		owner = msg.sender;
 		priceFeed = AggregatorV3Interface(_feedAddress);
 		otherToken = IERC20(address(_otherToken));
+		_decimals = 6;
+		setupDecimals(_decimals);
     }
+
+	function set_price_feed(address _feedAddress) public onlyOwner {
+		priceFeed = AggregatorV3Interface(_feedAddress);
+	}
+
+	function set_other_token(address _otherToken) public onlyOwner {
+		otherToken = IERC20(address(_otherToken));
+	}
 
 	uint private otherTokenDeposited;
 	function swap(uint amount) public {
@@ -99,6 +110,14 @@ contract MyTokenV2 is ERC777Upgradeable {
 
 		return burnPrice;
 	}
+
+	function decimals() override public pure returns (uint8) {
+        return 6;
+    }
+
+	function setupDecimals(uint8 decimals) internal {
+        decimals = decimals;
+    }
 
 	function getMintPrice() public view returns (uint) {
 		return getLatestPrice();

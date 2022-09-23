@@ -16,6 +16,10 @@ contract MyToken is ERC777Upgradeable {
 	// Chainlink pricefeed
 	AggregatorV3Interface internal priceFeed;
 	IERC20 internal otherToken;
+	uint priceFeed_decimals;
+	uint otherToken_decimals;
+	uint8 private _decimals;
+	// uint public other_decimals;
 
      address[] private this_array = [address(this)]; //! passed as array
 
@@ -27,12 +31,27 @@ contract MyToken is ERC777Upgradeable {
 	// 	priceFeed = AggregatorV3Interface(0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e); // ETH/USD 	on Ethereum Mainnet
 	// }
 
-	function initialize(string memory _name, string memory _symbol, address _feedAddress, address _otherToken) initializer public {
+	function initialize(string memory _name, string memory _symbol, address _feedAddress, address _otherToken, uint _priceFeed_decimals, uint _otherToken_decimals) initializer public {
 		__ERC777_init(_name, _symbol, this_array);
 		owner = msg.sender;
 		priceFeed = AggregatorV3Interface(_feedAddress);
+		// check to get decimals of other tokens
 		otherToken = IERC20(address(_otherToken));
+		priceFeed_decimals = _priceFeed_decimals;
+		// get price feed decimals from contract itseld
+		otherToken_decimals = _otherToken_decimals;
+		_decimals = 6;
+		setupDecimals(_decimals);
+		// other_decimals = this.decimals();
     }
+
+	function set_price_feed(address _feedAddress) public onlyOwner {
+		priceFeed = AggregatorV3Interface(_feedAddress);
+	}
+
+	function set_other_token(address _otherToken) public onlyOwner {
+		otherToken = IERC20(address(_otherToken));
+	}
 
 	uint private otherTokenDeposited;
 	function swap(uint amount) public {
@@ -42,8 +61,20 @@ contract MyToken is ERC777Upgradeable {
 		otherTokenDeposited += amount;
 
 		// Mint New Tokens
-		uint amountBasedOnFeed = (amount * 100000000) / getLatestPrice();
+		uint swap_decimals = this.decimals() - otherToken_decimals;
+		uint amountBasedOnFeed = ((amount * 10**priceFeed_decimals)/getLatestPrice()) * (1*10**swap_decimals);
+
+
+		// uint amountBasedOnFeed = (amount * 100000000) / getLatestPrice();
 		_mint(msg.sender, amountBasedOnFeed, "", "");
+	}
+
+	function swap_test(uint amount) public view returns (uint) {
+
+        uint swap_decimals = this.decimals() - otherToken_decimals;
+		uint ret_test = ((amount * 10**priceFeed_decimals)/getLatestPrice()) * (1*10**swap_decimals);
+		return ret_test;
+        // uint amountBasedOnFeed = ((amount * 10**priceFeed_decimals)/126220000000) * (1*10**swap_decimals)
 	}
 
 	// Modifier to restrict access to Owner
@@ -71,47 +102,98 @@ contract MyToken is ERC777Upgradeable {
 	uint private tokensBurnt;
 	uint private otherTokenWithdrawn;
 	function burnTokens(uint256 amount) public {
-		operatorSend(msg.sender, 0x000000000000000000000000000000000000dEaD, amount, "", ""); // Send the tokens to DEAD Address
+		// operatorSend(msg.sender, 0x000000000000000000000000000000000000dEaD, amount, "", ""); // Send the tokens to DEAD Address
 
-		uint tokensInCirculation = totalSupply() - tokensBurnt;
+		_burn(msg.sender, amount, "", "");
+		// * check what does total supply does
+		// * total supply() returns total amount of tokens in supply
+		// uint tokensInCirculation = totalSupply() - tokensBurnt;
 
 		// burnPrice initially set to pool index | if less than market price then it's sent to market price
-		uint burnPrice = (tokensInCirculation * 1000000000) / (otherTokenDeposited - otherTokenWithdrawn);
-		uint marketPrice = getLatestPrice() * 10;
-		if (burnPrice < marketPrice) burnPrice = marketPrice;
+		uint burnPrice;
+		// uint poolRatio = (otherTokenDeposited - otherTokenWithdrawn) * 100000000 / (tokensInCirculation);
+		// uint marketPrice = getLatestPrice();
+		// burnPrice = poolRatio;
+		// if (poolRatio > marketPrice) burnPrice = marketPrice;
 
-		uint otherTokenAmount = (amount / burnPrice) * 1000000000;
-		otherToken.transfer(msg.sender, otherTokenAmount); 																		// Transfer from THIS Contract to sender
+		// !check min or max in solidity
 		
+		burnPrice = getBurnPrice();
+		
+		uint swap_decimals = this.decimals() + (priceFeed_decimals-otherToken_decimals);
+		uint otherTokenAmount = (amount * burnPrice) / (1*10**swap_decimals);	
+		// otherToken.transferFrom(address(this), msg.sender, otherTokenAmount);	// Transfer from THIS Contract to sender
+
+
+		// (0.5 * 10^18) * (1400 * 10^8) / 10^8
+		// uint otherTokenAmount = (amount * burnPrice) / (1 * 10**otherToken_decimals);
+		otherToken.transfer(msg.sender, otherTokenAmount); 	
 		// Update records
 		tokensBurnt += amount;
 		otherTokenWithdrawn += otherTokenAmount;
 	}
 
+	function burn_price_test() public view returns (uint) {
+		uint tokensInCirculation = totalSupply();
+		// if (tokensInCirculation == 0) return getLatestPrice();
+
+		uint burnPrice;
+		// uint swap_decimals = this.decimals() - otherToken_decimals;
+		// = ((1000000 * (1*10**priceFeed_decimals)) / 773000000000000) * (1*10**12)
+		uint poolRatio = ((getCollateral() * (1*10**priceFeed_decimals)) / tokensInCirculation);
+		// uint poolRatio = prec_divide((getCollateral() * (1*10**priceFeed_decimals)), tokensInCirculation, swap_decimals);
+		uint marketPrice = getLatestPrice();
+		burnPrice = poolRatio;
+		if (poolRatio > marketPrice) burnPrice = marketPrice;
+
+		return burnPrice;
+	}
+	// proxy_contract.address
+	// proxy_contract.swap(1000000, {"from": account})
+	// proxy_contract.burn_price_test()
+
 	function getBurnPrice() public view returns (uint) {
-		uint tokensInCirculation = totalSupply() - tokensBurnt;
+		uint tokensInCirculation = totalSupply();
 		if (tokensInCirculation == 0) return getLatestPrice();
 
 		// burnPrice initially set to pool index | if less than market price then it's sent to market price
-		uint burnPrice = (tokensInCirculation * 100000000) / (otherTokenDeposited - otherTokenWithdrawn);
-		uint marketPrice = getLatestPrice();
-		if (burnPrice < marketPrice) burnPrice = marketPrice;
+		// uint burnPrice = (tokensInCirculation * 100000000) / (otherTokenDeposited - otherTokenWithdrawn);
+		// uint marketPrice = getLatestPrice();
+		// if (burnPrice < marketPrice) burnPrice = marketPrice;
 
+		uint burnPrice;
+		uint swap_decimals = this.decimals() - otherToken_decimals;
+		// uint poolRatio = prec_divide((getCollateral() * (1*10**priceFeed_decimals)), tokensInCirculation, swap_decimals);
+		uint poolRatio = (getCollateral() * (1*10**priceFeed_decimals) / tokensInCirculation);
+		uint marketPrice = getLatestPrice();
+		burnPrice = poolRatio;
+		if (poolRatio > marketPrice) burnPrice = marketPrice;
 		return burnPrice;
+	}
+
+	function decimals() override public pure returns (uint8) {
+        return 6;
+    }
+
+	// Set decimals of current Contract
+	function setupDecimals(uint8 decimals) internal {
+        decimals = decimals;
+    }
+
+
+	// returns the Collateral when called
+	function getCollateral() public view returns (uint) {
+		return (otherTokenDeposited - otherTokenWithdrawn);
 	}
 
 	function getMintPrice() public view returns (uint) {
 		return getLatestPrice();
 	}
 
+	// fetch latest price data from provided price feed
+	// the price is in (10^8) so we must divide it.
 	function getLatestPrice() internal view returns (uint) {
-		(
-			uint80 _roundID,
-			int price,
-			uint _startedAt,
-			uint _timeStamp,
-			uint80 _answeredInRound
-		) = priceFeed.latestRoundData();
+		(,int price,,,) = priceFeed.latestRoundData();
 		return uint(price);
 	}
 }

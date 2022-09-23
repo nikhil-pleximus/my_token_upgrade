@@ -26,7 +26,7 @@ networks:
   ganache:
     verify: False
   goerli:
-    verify: False
+    verify: True
 wallets:
   from_key: ${PRIVATE_KEY}
   from_mnemonic: ${MNEMONIC}
